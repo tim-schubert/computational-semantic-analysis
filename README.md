@@ -7,7 +7,7 @@ Code for the analysis of how oxytocin (OT), vasopressin (VP), dopamine (DA) and 
 Corpus sampling and the computational semantic analysis are a Python pipeline, provided in `code/` (seven scripts, run in order); the statistical analysis is an R project, provided in `analysis/`.
 
 | stage | step | code | use |
-|-----------------|-----------------|-----------------|-----------------------|
+|-----------------|-----------------|-----------------|---------------------|
 | Corpus sampling | 01 | `code/step01_fetch_corpus.py` | random sample per field from OpenAlex; journal criterion (SJR); target size |
 |  | 02 | `code/step02_prepare_abstracts.py` | rebuilds each abstract from OpenAlex's inverted index |
 | Computational semantic analysis: screening | 03 | `code/step03_screen.py` | screening (LLM) |
@@ -30,7 +30,7 @@ cd computational-semantic-analysis
 
 All commands below are run from this directory, the repository root.
 
-## Reproducing the results (statistical analysis) {#reproducing-the-results-statistical-analysis}
+## Reproducing the results (statistical analysis)
 
 This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
 
@@ -51,7 +51,7 @@ This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
     rmarkdown::render("analysis.Rmd", params = list(data = "../data/deposit"))
     ```
 
-    The report is `analysis/analysis.html`; tables are written to `analysis/tables/`, figures to `analysis/figures/`.
+    The report is saved as `analysis/analysis.html`, its tables in `analysis/tables/` and figures in `analysis/figures/`.
 
 ## Rerunning the pipeline (corpus sampling and computational semantic analysis)
 
@@ -87,9 +87,11 @@ The following commands are for macOS or Linux (on Windows, use WSL).
     bash code/run_main.sh
     ```
 
-    This runs the pipeline's steps in order and asks before each one, so it can be stopped and resumed (skipping the steps done). Results go to `data/runs/main/`. The LLM steps (03-05) can take several hours each.
+    This runs the pipeline's steps in order and asks before each one, so it can be stopped and resumed (skipping the steps done). Results go to `data/runs/main/`. The LLM steps (03-05) can take several hours each. Without human coding, the last step (07) writes all tables except the human validation.
 
-5.  **Human coding.** Step 06 writes `data/runs/main/coding_tool.html`, a page each coder opens in a browser; at the end it saves the coder's codes as `human_coding_<coder>.csv`. Put the coders' files in `data/runs/main/human_coding/` and combine them into one file with the same columns and one header, by hand or running the following code from the repository root:
+5.  **Analysis.** Knit the analysis as in [Reproducing the results](#reproducing-the-results-statistical-analysis), but with `data = "../data/runs/main"` (the default) instead of the deposit.
+
+6.  **Human coding (optional).** Step 06 writes `data/runs/main/coding_tool.html`, a page each coder opens in a browser; at the end it saves the coder's codes as `human_coding_<coder>.csv`. Move the coders' files to `data/runs/main/human_coding/` and combine them into one file with the same columns and one header, by hand or by running the following from the repository root (with the environment from step 1 active, `source .venv/bin/activate`):
 
     ``` bash
     python - <<'EOF'
@@ -103,6 +105,8 @@ The following commands are for macOS or Linux (on Windows, use WSL).
     EOF
     ```
 
-    Then run step 07 (the last step of `run_main.sh`), which reads `human_coding.csv`.
+    Then run step 07 again (and afterwards knit the R analysis again):
 
-6.  **Analysis.** Knit the analysis as in [Reproducing the results](#reproducing-the-results-statistical-analysis), but with `data = "../data/runs/main"` (the default) instead of the deposit.
+    ``` bash
+    python code/step07_join_and_checks.py --run main
+    ```
