@@ -4,7 +4,7 @@ Code for the analysis of how oxytocin (OT), vasopressin (VP), dopamine (DA) and 
 
 ## Workflow
 
-Corpus sampling and the computational semantic analysis are a Python pipeline, provided in `code/` (seven scripts, run in order); the statistical analysis is an R project, provided in `analysis/`.
+Corpus sampling and the computational semantic analysis are a Python pipeline, provided in `code/`; the statistical analysis is an R project, provided in `analysis/`.
 
 | stage | step | code | use |
 |-----------------|-----------------|-----------------|---------------------|
