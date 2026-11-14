@@ -65,9 +65,9 @@ The following commands are for macOS or Linux (on Windows, use WSL).
 
     This runs the pipeline's steps in order and asks before each one, so it can be stopped and resumed (skipping the steps done). Results go to `data/runs/main/`. The LLM steps (03-05) can take several hours each. Without human coding, the last step (07) writes all tables except the human validation.
 
-5.  **Analysis.** Knit the analysis as in [Reproducing the results](#reproducing-the-results-statistical-analysis), but with `data = "../data/runs/main"` (or the respective run folder, if a different name was used) instead of the deposit.
+5.  **Analysis.** Knit the analysis as in [Reproducing the study's results](#reproducing-the-results-statistical-analysis), but with `data = "../data/runs/main"` (or the respective run folder, if a different name was used) instead of the deposit.
 
-6.  **Human coding (optional).** Step 06 writes `data/runs/main/coding_tool.html`, a page each coder opens in a browser; at the end it saves the coder's codes as `human_coding_<coder>.csv`. Move the coders' files to `data/runs/main/human_coding/` and combine them into one file with the same columns and one header, by hand or by running the following from the repository root (with the environment from step 1 active, `source .venv/bin/activate`):
+6.  **Human coding (optional).** Step 06 writes `data/runs/main/coding_tool.html`, a page each coder opens in a browser; at the end it saves the coder's codes as `human_coding_<coder>.csv`. Move the coders' files to `data/runs/main/human_coding/` and combine them into one file with the same columns and one header, by hand or by running the following from the repository root (with the environment from step 1 active, to activate: `source .venv/bin/activate`):
 
     ``` bash
     python - <<'EOF'
@@ -88,7 +88,7 @@ The following commands are for macOS or Linux (on Windows, use WSL).
     ```
 
 
-## Reproducing the results (statistical analysis)
+## Reproducing the paper's results (statistical analysis)
 
 This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
 
