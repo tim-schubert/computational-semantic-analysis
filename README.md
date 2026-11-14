@@ -1,6 +1,6 @@
 # Computational semantic analysis for "Rethinking oxytocin"
 
-Code for the analysis of how oxytocin (OT), vasopressin (VP), dopamine (DA) and serotonin (5-HT) papers attribute functions to their substance. Each paper's conclusion is extracted from its abstract, masked, and scored on scope and vocabulary by a large language model (LLM), with human validation. The methods are described in the paper.
+Code for the analysis of how oxytocin (OT), vasopressin (VP), dopamine (DA) and serotonin (5-HT) papers attribute functions to the studied substance. Each paper's conclusion is extracted from its abstract, masked, and scored on scope and vocabulary by a large language model (LLM), with human validation. The methods are described in the accompanying manuscript.
 
 ## Workflow
 
