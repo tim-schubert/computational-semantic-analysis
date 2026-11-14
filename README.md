@@ -17,7 +17,7 @@ Corpus sampling and the computational semantic analysis are a Python pipeline, p
 | Statistical analysis | 07 | `code/step07_join_and_checks.py` | joins the results into the tables the analysis reads |
 |  |  | `analysis/analysis.Rmd` | statistics, tables and figures |
 
-`code/prompts.py` holds all prompts, `code/config.py` all settings. `docs/data_dictionary.md` describes every column of the tables, `docs/supplement_prompts.txt` reproduces every prompt verbatim.
+`code/prompts.py` holds all prompts, `code/config.py` all settings. `docs/data_dictionary.md` describes the columns of all tables, `docs/supplement_prompts.txt` reproduces all prompts verbatim.
 
 ## Getting the code
 
