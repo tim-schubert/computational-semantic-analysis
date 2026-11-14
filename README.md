@@ -30,29 +30,6 @@ cd computational-semantic-analysis
 
 All commands below are run from this directory, the repository root.
 
-## Reproducing the results (statistical analysis)
-
-This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
-
-1.  Download the data deposit (see the paper's Data availability statement) and unpack it into `data/deposit/`, so that `data/deposit/analysis/papers.csv` exists.
-
-2.  Open `analysis/analysis.Rproj` in RStudio. In the console, install the package versions used:
-
-    ``` r
-    install.packages("renv")
-    renv::restore()
-    ```
-
-    When asked how to proceed, choose "Activate the project and use the project library". This installs the packages into the project only, without changing potential other R installations.
-
-3.  In the console, knit the analysis with the deposit as its data:
-
-    ``` r
-    rmarkdown::render("analysis.Rmd", params = list(data = "../data/deposit"))
-    ```
-
-    The report is saved as `analysis/analysis.html`, its tables in `analysis/tables/` and figures in `analysis/figures/`.
-
 ## Rerunning the pipeline (corpus sampling and computational semantic analysis)
 
 A rerun will not reproduce the paper's numbers exactly: the OpenAlex index changes over time, and the LLM's answers are not deterministic. The study's run is preserved, though: its tables are in the data deposit, and the raw archive can be requested from the corresponding author.
@@ -79,7 +56,7 @@ The following commands are for macOS or Linux (on Windows, use WSL).
     OPENALEX_API_KEY=EXAMPLEn0tAr3alKeyXXXXXXXX
     ```
 
-3.  **SJR table.** Download the SCImago Journal Rank table (2025 release, "Download data" at <https://www.scimagojr.com>) and save it in `data/reference/`. Then set `SJR_CSV` in `code/config.py` to its file name (the study's run used a copy downloaded on 24 September 2026, `scimagojr_2025_downloaded_24_sep_2026.csv`).
+3.  **SJR table.** Download the SCImago Journal Rank table (2025 release, "Download data" at <https://www.scimagojr.com/journalrank.php>) and save it in `data/reference/`. Then set `SJR_CSV` in `code/config.py` to its file name (the study's run used a copy downloaded on 24 September 2026, `scimagojr_2025_downloaded_24_sep_2026.csv`).
 
 4.  **Run.**
 
@@ -110,3 +87,28 @@ The following commands are for macOS or Linux (on Windows, use WSL).
     ``` bash
     python code/step07_join_and_checks.py --run main
     ```
+
+
+## Reproducing the results (statistical analysis)
+
+This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
+
+1.  Download the data deposit (see the paper's Data availability statement) and unpack it into `data/deposit/`, so that `data/deposit/analysis/papers.csv` exists.
+
+2.  Open `analysis/analysis.Rproj` in RStudio. In the console, install the package versions used:
+
+    ``` r
+    install.packages("renv")
+    renv::restore()
+    ```
+
+    When asked how to proceed, choose "Activate the project and use the project library". This installs the packages into the project only, without changing potential other R installations.
+
+3.  In the console, knit the analysis with the deposit as its data:
+
+    ``` r
+    rmarkdown::render("analysis.Rmd", params = list(data = "../data/deposit"))
+    ```
+
+    The report is saved as `analysis/analysis.html`, its tables in `analysis/tables/` and figures in `analysis/figures/`.
+
