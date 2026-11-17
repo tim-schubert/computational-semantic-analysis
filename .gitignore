@@ -1,0 +1,10 @@
+# environment
+.venv/
+.env
+__pycache__/
+.DS_Store
+
+# data: pipeline runs, the SJR table, the unpacked data deposit
+data/runs/
+data/reference/
+data/deposit/

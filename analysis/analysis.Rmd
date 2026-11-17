@@ -1,0 +1,906 @@
+---
+title: "Statistical analysis of Computational Semantic Scoring for Nature Neuroscience Perspective 'Rethinking Oxytocin' "
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    self_contained: true
+params:
+  # folder with the pipeline's tables: run folder or the unpacked
+  # data deposit (each has analysis/ and scores.csv); relative to analysis/
+  data: "../data/runs/main"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
+                      fig.width = 7, fig.height = 4)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lme4)
+library(patchwork)
+
+source(here::here("R", "read_tables.R"))
+data_dir <- here::here(params$data)
+d <- read_tables(data_dir)
+# exclusions from step 02 on; step 01 is counted from flow.csv
+d$exclusions <- filter(d$exclusions, step != "01")
+
+fields <- c("OT", "VP", "DA", "5HT")
+comparators <- c("VP", "DA", "5HT")
+# one colour per substance and a base colour for scales and tints
+field_cols <- c(OT = "#7C1354", VP = "#A45F3D", DA = "#517B65", `5HT` = "#5C6984")
+base_col <- "#514D6A"
+# a tint of a colour: amount 0 = the colour, 1 = white
+tint <- function(col, amount)
+  grDevices::colorRampPalette(c(col, "white"))(101)[round(amount * 100) + 1]
+# level names for axis labels
+scope_names <- c(`0` = "0: Observed assay outcome",
+                 `1` = "1: Construct inferred from the assay",
+                 `2` = "2: Region-anchored function",
+                 `3` = "3: Substance-wide property")
+# short vocabulary codes for compact axes: behavioural, behaviour-specific
+# (A); behavioural, domain-general (B); mechanistic (C)
+vocab_short <- c(A = "BS", B = "BG", C = "M")
+theme_set(theme_classic(base_size = 11))
+fig_dir <- here::here("figures")
+dir.create(fig_dir, showWarnings = FALSE)
+tab_dir <- here::here("tables")
+dir.create(tab_dir, showWarnings = FALSE)
+# print + save tables
+show_table <- function(df, name, ...) {
+  readr::write_csv(df, file.path(tab_dir, paste0(name, ".csv")), na = "")
+  knitr::kable(df, ...)
+}
+# figures as PDF: Quartz on macOS, cairo_pdf elsewhere
+save_fig <- function(p, name, width = 7, height = 4) {
+  ggsave(file.path(fig_dir, paste0(name, ".pdf")), p, width = width,
+         height = height,
+         device = if (capabilities("aqua")) function(filename, ...)
+           grDevices::quartz(type = "pdf", file = filename, ...) else cairo_pdf)
+  p
+}
+
+# Wilson 95% interval for a proportion
+wilson <- function(k, n, z = 1.96) {
+  p <- k / n
+  den <- 1 + z^2 / n
+  centre <- (p + z^2 / (2 * n)) / den
+  half <- z * sqrt(p * (1 - p) / n + z^2 / (4 * n^2)) / den
+  tibble(share = p, lo = centre - half, hi = centre + half)
+}
+add_wilson <- function(df) bind_cols(df, wilson(df$k, df$n))
+pct <- function(x) sprintf("%.0f%%", 100 * x)
+fmt_ci <- function(est, lo, hi)
+  sprintf("%.2f (%.2f-%.2f)", est, lo, hi)
+# P values: three decimals, or scientific notation below 0.001
+fmt_p <- function(p) ifelse(p < 0.001,
+  sub("e-0?", " \u00d7 10^-", formatC(p, format = "e", digits = 1)),
+  sprintf("%.3f", p))
+```
+
+# Data, workflow and exclusions
+
+The analysis reads only the pipeline's tables and `scores.csv` (the scorer's three repeats).
+
+**Primary outcome:** a substance-wide behaviour-specific function attribution, i.e. a conclusion with scope 3 (a standing function of the substance as such) and vocabulary A, behaviour-specific (BS: naming one kind of behaviour, behavioural domain or paradigm), as in "[substance X] regulates maternal care". It is computed here from `scope` and `vocabulary`.
+
+```{r data}
+# analysed papers have a conclusion with both a scope and a vocabulary code
+papers <- d$papers |>
+  filter(!is.na(scope), !is.na(vocabulary)) |>
+  mutate(scope_num = as.integer(as.character(scope)),
+         primary = as.integer(scope_num == 3 & vocabulary == "A"),
+         year_c = year - mean(year),
+         # levels in a fixed order (radix sort, independent of the locale):
+         # the journal random effect (S1) depends slightly on level order
+         journal = factor(journal, levels = sort(unique(journal), method = "radix")))
+```
+
+`r nrow(papers)` papers are analysed: `r paste(sprintf("%s %d", fields, as.integer(table(papers$field)[fields])), collapse = ", ")`.
+
+## Flow and exclusions
+
+```{r flow}
+# flow.csv has per-field counts for step 01 only; for the later steps they
+# are counted from exclusions.csv. This chunk checks that they add up to
+# flow.csv's totals.
+flow <- d$flow
+excl <- d$exclusions |>
+  mutate(field = sub(".*_", "", paper_id))
+
+s1 <- flow |>
+  filter(step == "01") |>
+  select(field, label, n_in, n_out)
+kept01 <- s1 |>
+  group_by(field) |>
+  slice_tail(n = 1) |>
+  transmute(field, stage = "corpus entering the analysis", n = n_out)
+
+later <- flow |>
+  filter(step != "01") |>
+  arrange(order)
+counts <- kept01 |> select(field, n)
+rows <- list(kept01)
+for (i in seq_len(nrow(later))) {
+  r <- later[i, ]
+  out_f <- excl |>
+    filter(step == r$step, reason == r$reason) |>
+    count(field, name = "out")
+  counts <- counts |>
+    left_join(out_f, by = "field") |>
+    mutate(n = n - coalesce(out, 0L)) |>
+    select(field, n)
+  rows[[length(rows) + 1]] <- counts |>
+    mutate(stage = paste0(r$step, ": ", r$label))
+}
+flow_field <- bind_rows(rows) |>
+  mutate(field = factor(field, levels = fields),
+         stage = factor(stage, levels = unique(stage))) |>
+  pivot_wider(names_from = field, values_from = n) |>
+  mutate(total = OT + VP + DA + `5HT`)
+
+# the per-field counts add up to flow.csv's totals
+stopifnot(all(tail(flow_field$total, nrow(later)) == later$n_out))
+```
+
+```{r flow-boxes}
+# per-field stage counts and the exclusions between stages, for
+# the flow figure and its table; exclusion reasons worded for clarity.
+short <- c(
+  "screened successfully" = "screening failed \u2020",
+  "original research article" = "not original research (review, etc.)",
+  "design resolvable" = "unclear whether original data",
+  "CNS study" = "not on the central nervous system",
+  "scope resolvable" = "unclear whether central or peripheral",
+  "substance is the focus" = "substance not the focus of the finding",
+  "claim located" = "extraction failed \u2020",
+  "conclusion names the substance" = "conclusion does not name substance",
+  "'does' check answered" = "function attribution check failed \u2020",
+  "conclusion says what the substance does" =
+    "no function attributed to substance")
+excl_n <- function(f, st) {
+  rows <- later |> filter(step %in% st)
+  tibble(label = short[rows$label],
+         n = sapply(rows$reason, function(rs)
+           sum(excl$step %in% st & excl$reason == rs & excl$field == f)))
+}
+n_analysed <- table(papers$field)
+# conclusions that passed the function attribution check but failed a rule-based check
+# (verbatim, length, main sentence, masking)
+rule_fail <- d$spans |>
+  filter(scorable == 0, paper_excluded == 0) |>
+  mutate(check = case_when(
+    grepl("not fully masked", span_issue) ~ "name not masked",
+    grepl("not verbatim", span_issue) ~ "not verbatim",
+    TRUE ~ "too long or no valid main sentence"))
+# papers whose conclusion does not name the substance: is_na 1 when the
+# model returned no conclusion, 0 when the masked conclusion has no
+# [substance X]
+not_named <- function(f, na)
+  sum(d$spans$field == f & d$spans$is_na == na &
+        d$spans$paper_exclusion %in% "the conclusion does not name the substance")
+big <- function(x) format(x, big.mark = ",", trim = TRUE)
+# rows decided by the language model are shaded in the flow figure; the
+# others after the corpus are rule-based
+rule_based <- c("abstract under 250 characters",
+                "no [substance X] after masking",
+                "substance name left after masking", "extraction not verbatim",
+                "over 3 sentences or invalid main sentence")
+stage_names <- c("OpenAlex records matching the search", "Pool of eligible papers",
+                 "Downloaded random sample", "Corpus entering the analysis",
+                 "Eligible abstracts after screening",
+                 "Extracted and masked conclusions", "Scored conclusions")
+step_names <- c("OpenAlex filters", "Random draw",
+                "Journal criterion and target size", "Screening",
+                "Extraction and masking", "Blinded semantic scoring")
+per_field <- lapply(fields, function(f) {
+  r <- filter(flow, step == "01", field == f)
+  census <- any(r$label == "records retrieved")
+  pool_row <- r[grepl("^random draw|^records retrieved", r$label), ]
+  get01 <- function(lab) sum(r$n_excluded[r$label == lab])
+  kept <- tail(r$n_out, 1)
+  e02 <- excl_n(f, "02"); e03 <- excl_n(f, "03"); e04 <- excl_n(f, "04")
+  n_screened <- kept - sum(e02$n) - sum(e03$n)
+  n_does <- n_screened - sum(e04$n)
+  stopifnot(not_named(f, 1L) + not_named(f, 0L) == e04$n[2])
+  e_rule <- rule_fail |> filter(field == f) |> count(check, name = "n")
+  rule_n <- function(ch) sum(e_rule$n[e_rule$check == ch])
+  n_scored <- n_does - sum(e_rule$n)
+  n_na <- sum(excl$step == "05" & excl$field == f)
+  n_an <- as.integer(n_analysed[f])
+  # downloaded papers, not records. Paging through the full VP pool, the
+  # order of results shifted between page requests: papers near a page
+  # boundary came back twice and others were missed,
+  # so distinct papers fall slightly short of OpenAlex's count
+  n_dup <- get01("one record per paper")
+  n_down <- pool_row$n_out - n_dup
+  stages <- tibble(stage = stage_names, field = f,
+                   n = c(r$n_out[1], pool_row$n_in, n_down, kept,
+                         n_screened, n_scored, n_an))
+  items <- bind_rows(
+    tibble(step = step_names[1],
+           reason = c("not of type \u2018article\u2019 in OpenAlex", "no abstract",
+                      "published before 2000"),
+           n = c(get01("original research articles"), get01("has an abstract"),
+                 get01("published 2000+"))),
+    tibble(step = step_names[2],
+           reason = c("not in the random sample",
+                      "missed while paging \u2021"),
+           n = c(if (census) 0L else pool_row$n_excluded,
+                 if (census) pool_row$n_in - n_down else 0L)),
+    tibble(step = step_names[3],
+           reason = c("no journal ISSN", "journal not in SJR",
+                      "oversampling margin (not used)"),
+           n = c(get01("has a journal ISSN"), get01("journal listed in SJR"),
+                 get01("trimmed to target size"))),
+    tibble(step = step_names[4],
+           # criteria first, then failed requests (e03[1]: no valid answer)
+           reason = c("abstract under 250 characters",
+                      e03$label[-1], e03$label[1]),
+           n = c(sum(e02$n), e03$n[-1], e03$n[1])),
+    tibble(step = step_names[5],
+           # in the order step 04 decides, criteria first and failed
+           # requests last; e04 is (1) no conclusion extracted, (2) not
+           # named, (3) no answer from the function attribution check, (4)
+           # no function attributed. Not named is split: the model returned no
+           # conclusion (the prompt says to when none names the substance),
+           # or the script found no [substance X] in the masked conclusion
+           reason = c("no conclusion naming substance",
+                      "no [substance X] after masking",
+                      e04$label[4],
+                      "extraction not verbatim",
+                      "over 3 sentences or invalid main sentence",
+                      "substance name left after masking",
+                      e04$label[1], e04$label[3]),
+           n = c(not_named(f, 1L), not_named(f, 0L), e04$n[4],
+                 rule_n("not verbatim"),
+                 rule_n("too long or no valid main sentence"),
+                 rule_n("name not masked"),
+                 e04$n[1], e04$n[3])),
+    tibble(step = step_names[6],
+           # the same criterion as step 04's function attribution check,
+           # judged by the blinded scorer; failed requests last
+           reason = c("no function attributed to substance",
+                      "scoring failed \u2020"),
+           n = c(n_na, n_scored - n_na - n_an))) |>
+    mutate(field = f)
+  list(stages = stages, items = items)
+})
+flow_stages <- bind_rows(lapply(per_field, `[[`, "stages")) |>
+  mutate(stage = factor(stage, levels = stage_names))
+flow_items <- bind_rows(lapply(per_field, `[[`, "items")) |>
+  mutate(step = factor(step, levels = step_names),
+         llm = as.integer(step) >= 4 & !reason %in% rule_based)
+# every stage is the one above minus that step's exclusions, and the
+# analysed papers add up
+check <- flow_stages |>
+  group_by(field) |>
+  arrange(stage, .by_group = TRUE) |>
+  mutate(drop = lag(n) - n, step = c(NA, step_names)) |>
+  filter(!is.na(step)) |>
+  left_join(flow_items |> group_by(field, step) |>
+              summarise(excluded = sum(n), .groups = "drop") |>
+              mutate(step = as.character(step)),
+            by = c("field", "step"))
+stopifnot(all(check$drop == check$excluded),
+          sum(flow_stages$n[flow_stages$stage == "Scored conclusions"]) ==
+            nrow(papers))
+
+# the flow figure as a table
+flow_table <- bind_rows(
+  flow_stages |>
+    transmute(field, pos = as.integer(stage) * 100, step = "",
+              row = as.character(stage), `decided by` = "", n),
+  flow_items |>
+    group_by(field) |>
+    mutate(pos = as.integer(step) * 100 + row_number()) |>
+    ungroup() |>
+    transmute(field, pos, step = as.character(step), row = reason,
+              `decided by` = ifelse(llm, "LLM", "rule-based"), n)) |>
+  pivot_wider(names_from = field, values_from = n) |>
+  arrange(pos) |>
+  select(-pos) |>
+  mutate(total = OT + VP + DA + `5HT`)
+show_table(flow_table, "table_flow", format.args = list(big.mark = ","),
+           caption = paste("Stages (no step) and the papers each step",
+                           "excluded. † no valid LLM answer;",
+                           "‡ lost while paging through the VP pool"))
+```
+
+```{r fig-flow-fields, fig.width = 7.1, fig.height = 8.5}
+# Flow figure. Each stage box gives
+# the total and the count per field; each step's exclusions are a small
+# table (reason x field) to the right of the arrow between two stages.
+# Units: x in inches, y in text lines.
+fld_lab <- c(OT = "OT", VP = "VP", DA = "DA", `5HT` = "5-HT")
+line_in <- 0.125
+txt <- 2.3; txt_b <- 2.4             # text sizes (mm): body, bold headings
+st_w <- 2.5; st_h <- 3.3            # stage box: width (in), height (lines)
+tb_x <- 2.65                        # left edge of the exclusion tables
+tb_col <- tb_x + c(0, 1.7, 2.08, 2.46, 2.84, 3.26)  # reason, 4 fields, right
+num_x <- 0.34                       # numbers right-aligned in their column
+arrow_gap <- 0.06                   # space between an arrowhead and its box (in)
+dash <- function(n) ifelse(n == 0, "\u2013", big(n))
+tables <- lapply(step_names, function(st) {
+  it <- flow_items |>
+    filter(step == st) |>
+    group_by(reason) |>
+    filter(any(n > 0)) |>
+    ungroup() |>
+    mutate(reason = factor(reason, levels = unique(reason)),
+           field = factor(field, levels = fields)) |>
+    arrange(reason, field)
+  list(step = st, total = sum(it$n), rows = levels(droplevels(it$reason)),
+       items = it)
+})
+tab_h <- sapply(tables, function(t) length(t$rows) + 2.6)
+# the tables sit beside the stage column, so they may reach up and down
+# alongside the stage boxes; the gaps keep consecutive tables apart
+gap <- pmax(2.2, tab_h - st_h + 1.6)
+# two dashed frames group the steps as in the workflow figure: corpus sampling (tables
+# 1-3) and computational semantic analysis (tables 4-6)
+lab_room <- 2.2                      # stage 4 bottom to table 4 top (lines)
+gap[3] <- tab_h[3] + 2
+gap[4] <- lab_room + tab_h[4] - st_h + 2.4
+stage_top <- -c(0, cumsum(st_h + gap))[seq_along(stage_names)]
+# stage boxes
+sb <- flow_stages |>
+  mutate(i = as.integer(stage), top = stage_top[i])
+sb_box <- sb |> distinct(stage, i, top) |>
+  left_join(sb |> group_by(stage) |> summarise(total = sum(n)), by = "stage")
+sb_cells <- sb |> mutate(col = match(field, fields),
+                         x = st_w * (col - 0.5) / 4)
+# exclusion tables
+tb <- bind_rows(lapply(seq_along(tables), function(j) {
+  t <- tables[[j]]
+  mid <- if (j == 4) stage_top[j] - st_h - lab_room - tab_h[j] / 2
+         else stage_top[j] - st_h - gap[j] / 2
+  top <- mid + tab_h[j] / 2
+  t$items |> mutate(j = j, top = top, mid = mid,
+                    row = as.integer(reason), col = match(field, fields))
+}))
+tb_frame <- tb |> distinct(j, top, mid) |>
+  mutate(h = tab_h[j], head = sapply(j, function(k)
+    paste0(tables[[k]]$step, ": ", big(tables[[k]]$total),
+           if (tables[[k]]$step == "Journal criterion and target size")
+             " excluded or not used" else " excluded")))
+tb_reasons <- tb |> distinct(j, top, row, reason, llm)
+frames <- tibble(
+  label = c("Corpus sampling", "Computational semantic analysis"),
+  top = c(0.5, stage_top[4] - st_h - lab_room + 0.6),
+  bottom = c(stage_top[4] + 0.5, stage_top[7] - st_h - 0.5))
+y_hi <- frames$top[1] + 1.5
+y_lo <- frames$bottom[2] - 0.3
+# VP, for the figure legend: duplicates returned while paging, and papers
+# missed
+vp_dup <- sum(flow$n_excluded[flow$step == "01" & flow$field == "VP" &
+                                flow$label == "one record per paper"])
+vp_missed <- sum(flow_items$n[flow_items$field == "VP" &
+                                grepl("^missed while paging", flow_items$reason)])
+p <- ggplot() +
+  # arrows between stages, and to each exclusion table
+  geom_segment(data = sb_box |> filter(i < max(i)),
+               aes(x = st_w / 2, xend = st_w / 2, y = top - st_h,
+                   yend = top - st_h - gap[i] + arrow_gap / line_in),
+               arrow = arrow(length = unit(1.5, "mm"), type = "closed")) +
+  geom_segment(data = tb_frame, aes(x = st_w / 2, xend = tb_x - arrow_gap,
+                                    y = mid, yend = mid),
+               arrow = arrow(length = unit(1.5, "mm"), type = "closed")) +
+  # stage boxes: title and total, then one cell per field
+  geom_rect(data = sb_box, aes(xmin = 0, xmax = st_w, ymin = top - st_h,
+                               ymax = top), fill = "white", colour = "grey20",
+            linewidth = 0.3) +
+  geom_segment(data = sb_box, aes(x = 0, xend = st_w, y = top - 1.3,
+                                  yend = top - 1.3), colour = "grey60",
+               linewidth = 0.2) +
+  geom_segment(data = tidyr::crossing(sb_box, k = 1:3),
+               aes(x = st_w * k / 4, xend = st_w * k / 4, y = top - 1.3,
+                   yend = top - st_h), colour = "grey60", linewidth = 0.2) +
+  geom_text(data = sb_box, aes(x = 0.06, y = top - 0.65, label = stage),
+            hjust = 0, fontface = "bold", size = txt_b) +
+  geom_text(data = sb_box, aes(x = st_w - 0.06, y = top - 0.65,
+                               label = paste0("n = ", big(total))),
+            hjust = 1, size = txt) +
+  # field labels in the substance colours
+  geom_text(data = sb_cells, aes(x = x, y = top - 1.85,
+                                 label = fld_lab[as.character(field)],
+                                 colour = field_cols[as.character(field)]),
+            fontface = "bold", size = txt) +
+  geom_text(data = sb_cells, aes(x = x, y = top - 2.75, label = big(n)),
+            size = txt) +
+  # exclusion tables: heading, column labels, one row per reason
+  geom_rect(data = tb_frame, aes(xmin = tb_x, xmax = tb_col[6],
+                                 ymin = top - h, ymax = top),
+            fill = "white", colour = NA) +
+  # rows decided by the language model are shaded
+  geom_rect(data = tb_reasons |> filter(llm),
+            aes(xmin = tb_x, xmax = tb_col[6], ymin = top - 1.6 - row - 0.5,
+                ymax = top - 1.6 - row + 0.5), fill = tint(base_col, 0.9)) +
+  geom_rect(data = tb_frame, aes(xmin = tb_x, xmax = tb_col[6],
+                                 ymin = top - h, ymax = top),
+            fill = NA, colour = "grey20", linewidth = 0.3) +
+  geom_text(data = tb_frame, aes(x = tb_x + 0.06, y = top - 0.6, label = head),
+            hjust = 0, fontface = "bold", size = txt_b) +
+  geom_text(data = tidyr::crossing(tb_frame, col = 1:4),
+            aes(x = tb_col[col + 1] + num_x, y = top - 1.6,
+                label = fld_lab[fields[col]], colour = field_cols[fields[col]]),
+            hjust = 1, fontface = "bold", size = txt) +
+  geom_segment(data = tb_frame, aes(x = tb_x, xend = tb_col[6],
+                                    y = top - 2.05, yend = top - 2.05),
+               colour = "grey60", linewidth = 0.2) +
+  geom_text(data = tb_reasons, aes(x = tb_x + 0.06, y = top - 1.6 - row,
+                                   label = reason),
+            hjust = 0, size = txt) +
+  geom_text(data = tb, aes(x = tb_col[col + 1] + num_x, y = top - 1.6 - row,
+                           label = dash(n)),
+            hjust = 1, size = txt) +
+  scale_colour_identity() +
+  # two frames, each labelled above its top right corner
+  geom_rect(data = frames, aes(xmin = -0.08, xmax = tb_col[6] + 0.08,
+                               ymin = bottom, ymax = top),
+            fill = NA, colour = "grey55", linewidth = 0.3, linetype = "22") +
+  geom_text(data = frames, aes(x = tb_col[6] + 0.08, y = top + 0.75,
+                               label = label),
+            hjust = 1, fontface = "bold", size = txt_b, colour = "grey30") +
+  coord_fixed(ratio = line_in, xlim = c(-0.1, tb_col[6] + 0.1),
+              ylim = c(y_lo, y_hi), expand = FALSE,
+              clip = "off") +
+  theme_void() +
+  theme(plot.margin = margin(4, 4, 4, 4),
+        plot.background = element_rect(fill = "white", colour = NA))
+fig_w <- tb_col[6] + 0.2 + 0.12
+fig_h <- (y_hi - y_lo) * line_in + 0.12
+save_fig(p, "fig_flow_fields", width = fig_w, height = fig_h)
+```
+
+For the figure legend (‡): paging through the VP pool returned `r vp_dup` papers twice (counted once) and missed `r vp_missed` papers in OpenAlex's count.
+
+## Workflow
+
+```{r fig-workflow,fig.width = 7.1, fig.height = 1.3}
+# workflow at a glance, as a horizontal strip.
+# Step and count wording as in the Methods and the flow figure.
+# Boxes of steps involving the language model are shaded; the
+# three model steps are framed as the computational semantic analysis.
+# Box widths fit their longest line (measured in Arial 6.5 pt); x in
+# inches, y in text lines.
+wf_line <- 0.125; wf_txt <- 2.3; wf_txt_b <- 2.4
+wf_gap <- 0.12                         # gap between boxes (in)
+wf_arrow <- 0.025                      # space before an arrowhead (in)
+wf_pad <- 0.06                         # text inset from the box edge (in)
+llm_fill <- tint(base_col, 0.9)
+n_at <- function(st) format(sum(flow_stages$n[flow_stages$stage == st]),
+                            big.mark = ",", trim = TRUE)
+wf <- tibble(
+  step = c("Corpus sampling", "Screening", "Extraction and masking",
+           "Blinded semantic scoring", "Statistical\nanalysis"),
+  desc = c("random, from OpenAlex", "CNS research, substance as focus",
+           "conclusion extracted, substance masked",
+           "scope and vocabulary, separately", ""),
+  # counts: the number in bold, then what it counts
+  n = c(n_at("Corpus entering the analysis"),
+        n_at("Eligible abstracts after screening"),
+        n_at("Extracted and masked conclusions"),
+        n_at("Scored conclusions"), ""),
+  what = c("papers", "eligible abstracts", "extracted and masked conclusions",
+           "scored conclusions", ""),
+  n_w = c(0.278, 0.227, 0.227, 0.227, 0) + 0.025,  # bold number + a space
+  # widest line of each box, measured (in), plus the inset on both sides
+  w = c(0.97, 1.40, 1.65, 1.35, 0.45) + 2 * 0.06,
+  llm = c(FALSE, TRUE, TRUE, TRUE, FALSE)) |>
+  mutate(x0 = cumsum(lag(w + wf_gap, default = 0)))
+head_h <- 1.9                           # room above the boxes
+box_h <- 3.4                            # three lines and padding
+frame <- tibble(x0 = wf$x0[2] - 0.06, x1 = wf$x0[4] + wf$w[4] + 0.06,
+                top = 0.45, bottom = -box_h - 0.45)
+val <- tibble(x0 = wf$x0[4], w = wf$w[4], top = -box_h - 1.6, h = 2.4)
+p <- ggplot() +
+  # computational semantic analysis
+  geom_rect(data = frame, aes(xmin = x0, xmax = x1, ymin = bottom, ymax = top),
+            fill = NA, colour = "grey55", linewidth = 0.3, linetype = "22") +
+  geom_text(data = frame, aes(x = x0, y = top + 0.75,
+                              label = "Computational semantic analysis"),
+            hjust = 0, fontface = "bold", size = wf_txt_b, colour = "grey30") +
+  geom_segment(data = wf |> filter(row_number() < n()),
+               aes(x = x0 + w, xend = x0 + w + wf_gap - wf_arrow,
+                   y = -box_h / 2, yend = -box_h / 2),
+               arrow = arrow(length = unit(1, "mm"), type = "closed")) +
+  geom_rect(data = wf, aes(xmin = x0, xmax = x0 + w, ymin = -box_h, ymax = 0,
+                           fill = llm), colour = "grey20", linewidth = 0.3) +
+  scale_fill_manual(values = c(`TRUE` = llm_fill, `FALSE` = "white"),
+                    guide = "none") +
+  # step names, left-aligned from the top
+  geom_text(data = wf, aes(x = x0 + wf_pad, y = -0.25, label = step),
+            hjust = 0, vjust = 1, fontface = "bold", size = wf_txt_b,
+            lineheight = 1) +
+  geom_text(data = wf, aes(x = x0 + wf_pad, y = -1.7, label = desc),
+            hjust = 0, size = wf_txt) +
+  geom_text(data = wf, aes(x = x0 + wf_pad, y = -2.7, label = n),
+            hjust = 0, fontface = "bold", size = wf_txt) +
+  geom_text(data = wf, aes(x = x0 + wf_pad + n_w, y = -2.7, label = what),
+            hjust = 0, size = wf_txt) +
+  # human validation
+  geom_segment(data = val, aes(x = x0 + w / 2, xend = x0 + w / 2,
+                               y = top, yend = -box_h - wf_arrow / wf_line),
+               arrow = arrow(length = unit(1, "mm"), type = "closed"),
+               colour = "grey40", linewidth = 0.4) +
+  geom_rect(data = val, aes(xmin = x0, xmax = x0 + w, ymin = top - h,
+                            ymax = top), fill = "white", colour = "grey20",
+            linewidth = 0.3) +
+  geom_text(data = val, aes(x = x0 + wf_pad, y = top - 0.7,
+                            label = "Human validation"),
+            hjust = 0, fontface = "bold", size = wf_txt_b) +
+  geom_text(data = val, aes(x = x0 + wf_pad, y = top - 1.7,
+                            label = "3 researchers, 30 conclusions"),
+            hjust = 0, size = wf_txt) +
+  coord_fixed(ratio = wf_line, xlim = c(0, max(wf$x0 + wf$w)),
+              ylim = c(val$top - val$h, head_h), expand = FALSE, clip = "off") +
+  theme_void() +
+  theme(plot.margin = margin(4, 4, 4, 4),
+        plot.background = element_rect(fill = "white", colour = NA))
+wf_fig_w <- max(wf$x0 + wf$w) + 0.12
+wf_fig_h <- (head_h - (val$top - val$h)) * wf_line + 0.12
+save_fig(p, "fig_workflow", width = wf_fig_w, height = wf_fig_h)
+```
+
+## LLM scoring repeats
+
+The scorer answered for each axis three times per conclusion; the modal answer is kept (the first, if all three differ). Per axis, among conclusions with a valid answer in all three repeats: how often the three agreed, and how often all three differed.
+
+```{r repeats}
+scores <- readr::read_csv(file.path(data_dir, "scores.csv"),
+                          col_types = readr::cols(.default = "c"))
+# the three repeats are stored as "a;b;c", with "None" for a repeat without
+# a valid answer; counted are the conclusions with three valid answers
+repeat_row <- function(axis, col) {
+  r <- strsplit(scores[[col]], ";", fixed = TRUE)
+  r <- r[!sapply(r, function(x) any(x == "None"))]
+  k <- sapply(r, function(x) length(unique(x)))
+  tibble(axis, `valid answers` = length(r), `all three agreed` = sum(k == 1),
+         `all three differed` = sum(k == 3))
+}
+bind_rows(repeat_row("scope", "reps"),
+          repeat_row("vocabulary", "vocab_reps")) |>
+  show_table("table_scoring_repeats")
+```
+
+# Primary outcome
+
+Share of substance-wide behaviour-specific function attributions per field, and a logistic regression on field (OT the reference level). Odds ratios are OT vs each comparator, with Wald 95% intervals; P values Holm-adjusted across the three contrasts.
+
+```{r primary}
+prim <- papers |>
+  group_by(field) |>
+  summarise(k = sum(primary), n = n(), .groups = "drop") |>
+  add_wilson()
+prim |>
+  transmute(field, n,
+            `substance-wide behaviour-specific function attributions` = k,
+            `share (95% CI)` = sprintf("%s (%s-%s)", pct(share), pct(lo),
+                                       pct(hi))) |>
+  knitr::kable()
+
+m_prim <- glm(primary ~ field, data = papers, family = binomial)
+m_null <- glm(primary ~ 1, data = papers, family = binomial)
+lr <- anova(m_null, m_prim, test = "LRT")
+lr_test <- tibble(chisq = lr$Deviance[2], df = lr$Df[2], P = lr$`Pr(>Chi)`[2])
+lr_test |>
+  mutate(chisq = sprintf("%.1f", chisq), P = fmt_p(P)) |>
+  knitr::kable(caption = "Likelihood-ratio test of field")
+
+# field is coded with OT as the reference level, so each coefficient is
+# comparator minus OT; the odds ratio of OT vs a comparator is exp(-coef)
+ot_vs <- function(m) {
+  cf <- summary(m)$coefficients
+  rows <- paste0("field", comparators)
+  b <- cf[rows, 1]
+  se <- cf[rows, 2]
+  p <- cf[rows, 4]
+  tibble(comparator = comparators, OR = exp(-b),
+         lo = exp(-b - 1.96 * se), hi = exp(-b + 1.96 * se),
+         p = p, p_holm = p.adjust(p, "holm"))
+}
+ot_vs(m_prim) |>
+  transmute(comparator, `OR, OT vs comparator (95% CI)` = fmt_ci(OR, lo, hi),
+            P = fmt_p(p), `P, Holm-adjusted` = fmt_p(p_holm)) |>
+  knitr::kable()
+```
+
+```{r fig-primary}
+# Substances as rows, OT on top, shared by both panels so each substance's
+# share (left) and odds ratio (right) sit on the same line; OT's row is
+# shaded in both. Dashed line, left: the comparators' mean share.
+comp_mean <- mean(prim$share[prim$field %in% comparators])
+rows <- rev(fields)
+prim_rows <- prim |>
+  mutate(row = factor(field, levels = rows))
+# the OT row's shading
+band <- function(xmin = -Inf, xmax = Inf)
+  annotate("rect", ymin = 3.5, ymax = 4.5, xmin = xmin, xmax = xmax,
+           fill = "grey93")
+pa <- ggplot(prim_rows, aes(share, row, colour = field)) +
+  scale_y_discrete() +
+  band() +
+  geom_vline(xintercept = comp_mean, linetype = 2, colour = "grey45") +
+  annotate("text", x = comp_mean, y = 4.75, hjust = -0.05, size = 3,
+           colour = "grey35",
+           label = paste0("comparators' mean (", pct(comp_mean), ")")) +
+  geom_pointrange(aes(xmin = lo, xmax = hi), size = 0.6, linewidth = 0.8) +
+  geom_text(aes(x = hi, label = paste0("n = ", n)),
+            hjust = -0.1, size = 3) +
+  scale_colour_manual(values = field_cols, guide = "none") +
+  scale_x_continuous(labels = scales::percent, limits = c(0, 0.5),
+                     breaks = seq(0, 0.4, 0.1),
+                     expand = expansion(mult = c(0, 0.02))) +
+  coord_cartesian(ylim = c(0.6, 4.9), clip = "off") +
+  labs(x = "substance-wide behaviour-specific\nfunction attributions", y = NULL)
+# right: odds ratios, OT vs each comparator, on the comparator's row
+or_tab <- ot_vs(m_prim) |>
+  mutate(field = comparator, row = factor(comparator, levels = rows),
+         p_lab = ifelse(p_holm < 0.001, "P < 0.001",
+                        sprintf("P = %.3f", p_holm)))
+pb <- ggplot(or_tab, aes(OR, row, colour = field)) +
+  band(0.5, 20) +
+  geom_vline(xintercept = 1, linetype = 2, colour = "grey45") +
+  annotate("label", x = 1, y = 4, label = "reference", size = 3,
+           colour = "grey35", fill = "grey93", border.colour = NA) +
+  geom_pointrange(aes(xmin = lo, xmax = hi), size = 0.6, linewidth = 0.8) +
+  geom_text(aes(x = hi, label = p_lab),
+            hjust = -0.1, size = 3) +
+  scale_colour_manual(values = field_cols, guide = "none") +
+  scale_y_discrete(drop = FALSE, labels = NULL) +
+  scale_x_log10(breaks = c(0.5, 1, 2, 4, 8), limits = c(0.5, 20),
+                expand = c(0, 0)) +
+  coord_cartesian(ylim = c(0.6, 4.9), clip = "off") +
+  labs(x = "odds ratio, OT vs substance\n(log scale)", y = NULL) +
+  theme(axis.ticks.y = element_blank())
+p <- pa + pb + plot_layout(widths = c(1, 1))
+save_fig(p, "fig_primary", width = 6, height = 2.6)
+```
+
+## Sensitivity analyses
+
+The primary model with one change each: a journal random effect (rationale: papers in the same journal may resemble each other), linear publication year, SJR quartile, and only papers reporting a behavioural outcome (evidence type behaviour only, or behaviour and mechanism, recorded by the LLM in the extraction request).
+
+```{r sensitivity}
+# papers whose abstract reports a behavioural outcome, by the LLM's evidence
+# type (step 04)
+behavioural <- filter(papers, evidence_type %in%
+                        c("behaviour_only", "behaviour_and_mechanism"))
+sens <- bind_rows(
+  `main model` = ot_vs(m_prim) |> mutate(n = nrow(papers)),
+  `S1 journal random effect` = ot_vs(
+    glmer(primary ~ field + (1 | journal), data = papers, family = binomial,
+          control = glmerControl(optimizer = "bobyqa"))) |>
+    mutate(n = nrow(papers)),
+  `S2 publication year` = ot_vs(
+    glm(primary ~ field + year_c, data = papers, family = binomial)) |>
+    mutate(n = nrow(papers)),
+  `S3 SJR quartile` = ot_vs(
+    glm(primary ~ field + sjr_quartile, data = papers, family = binomial)) |>
+    mutate(n = nrow(papers)),
+  `S4 behavioural outcome reported` = ot_vs(
+    glm(primary ~ field, data = behavioural, family = binomial)) |>
+    mutate(n = nrow(behavioural)),
+  .id = "analysis") |>
+  mutate(analysis = factor(analysis, levels = rev(unique(analysis))))
+# table: per analysis and field, the share of attributions
+# and the odds ratio, OT vs that field, with Holm-adjusted P
+share_cell <- function(df) df |>
+  group_by(field) |>
+  summarise(k = sum(primary), n = n(), .groups = "drop") |>
+  add_wilson() |>
+  transmute(field, `attributions / papers` = sprintf("%d / %d", k, n),
+            `share (95% CI)` = sprintf("%s (%s-%s)", pct(share), pct(lo),
+                                       pct(hi)))
+shares <- bind_rows(`main model` = share_cell(papers),
+                    `S4 behavioural outcome reported` = share_cell(behavioural),
+                    .id = "analysis")
+table_statistics <- sens |>
+  transmute(analysis = as.character(analysis), field = comparator,
+            `OR, OT vs field (95% CI)` = fmt_ci(OR, lo, hi),
+            `P (Holm)` = fmt_p(p_holm)) |>
+  bind_rows(tibble(analysis = levels(sens$analysis), field = "OT",
+                   `OR, OT vs field (95% CI)` = "reference")) |>
+  left_join(shares, by = c("analysis", "field")) |>
+  mutate(analysis = factor(analysis, levels = rev(levels(sens$analysis))),
+         field = factor(field, levels = fields)) |>
+  arrange(analysis, field) |>
+  select(analysis, field, `attributions / papers`, `share (95% CI)`,
+         `OR, OT vs field (95% CI)`, `P (Holm)`)
+show_table(table_statistics, "table_statistics",
+           caption = paste0(
+             "Main model: logistic regression on field; likelihood-ratio ",
+             "test of field, chi-square = ", sprintf("%.1f", lr_test$chisq),
+             ", df = ", lr_test$df, ", P = ", fmt_p(lr_test$P), ". ",
+             "S1-S3 use the main model's papers. ",
+             "Holm adjustment across the three comparisons of each analysis."))
+```
+
+# Descriptive statistics
+
+## Scope by vocabulary
+
+The primary outcome is the outlined cell, scope 3 x vocabulary BS.
+
+```{r fig-joint, fig.width = 7, fig.height = 2.6}
+# scope as rows (full names), vocabulary as columns (short codes), one panel per substance
+joint <- papers |>
+  count(field, scope, vocabulary, .drop = FALSE) |>
+  group_by(field) |>
+  mutate(share = n / sum(n))
+p <- ggplot(joint, aes(vocabulary, scope, fill = share)) +
+  geom_tile(colour = "white") +
+  # outlined: the primary outcome (scope 3, vocabulary BS)
+  geom_tile(data = filter(joint, scope == "3", vocabulary == "A"),
+            fill = NA, colour = "black", linewidth = 0.6) +
+  geom_text(aes(label = pct(share),
+                colour = share > 0.6 * max(joint$share)), size = 2.4) +
+  scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "black"),
+                      guide = "none") +
+  facet_wrap(~ field, nrow = 1) +
+  scale_fill_gradient(low = "white", high = base_col,
+                      labels = scales::percent) +
+  scale_x_discrete(labels = vocab_short) +
+  scale_y_discrete(labels = scope_names) +
+  coord_fixed() +
+  labs(x = "vocabulary\nBS behaviour-specific, BG domain-general, M mechanistic",
+       y = "scope", fill = NULL) +
+  theme(panel.spacing.x = unit(0.4, "lines"),
+        axis.title.x = element_text(lineheight = 1.1))
+save_fig(p, "fig_scope_by_vocabulary", width = 7, height = 2.6)
+```
+
+## Function attribution
+
+Share of the conclusions naming the substance that attribute a function to it (the function attribution check in extraction and masking), per field.
+
+```{r does}
+d$spans |>
+  filter(location == "absconc", !is.na(substance_does)) |>
+  group_by(field) |>
+  summarise(`function attributed / checked` =
+              sprintf("%d / %d", sum(substance_does), n()),
+            share = pct(mean(substance_does)), .groups = "drop") |>
+  show_table("table_does_rate")
+```
+
+# Human validation
+
+The validation sample (30 conclusions) was coded by three human researchers (TS, SS, FA) and their answers compared with the LLM's in terms of:
+
+-   **Function attribution:** whether a conclusion attributes a function to the substance at all (yes/no).
+-   **Scope** (0-3) and **vocabulary** (BS, BG, M): each on the conclusions to which both raters attributed a function.
+
+Comparisons: each pair of coders, the LLM with each coder, and the LLM with the coders' consensus (for each decision, the code given by at least two of the three coders; none otherwise).
+
+Measures, for each pair: Krippendorff's alpha (agreement corrected for chance: 1 perfect, 0 chance level; ordinal for scope, nominal otherwise) and percent agreement (share of conclusions on which the two gave the same code). Mean rows are the plain mean over the three pairs directly above.
+
+This section needs the coders' codes (`analysis/agreement.csv`); without them it is skipped.
+
+```{r human-validation, eval = !is.null(d$agreement)}
+# Krippendorff's alpha for a raters x items matrix (NA = no answer),
+# nominal or ordinal metric
+kripp_alpha <- function(m, level = c("nominal", "ordinal"), values) {
+  level <- match.arg(level)
+  k <- length(values)
+  o <- matrix(0, k, k)
+  for (j in seq_len(ncol(m))) {
+    v <- na.omit(m[, j])
+    if (length(v) < 2) next
+    t <- as.vector(table(factor(v, levels = values)))
+    o <- o + (outer(t, t) - diag(t)) / (length(v) - 1)
+  }
+  nc <- rowSums(o)
+  n <- sum(nc)
+  delta <- matrix(0, k, k)
+  for (a in seq_len(k)) for (b in seq_len(k)) {
+    if (level == "nominal") {
+      delta[a, b] <- as.numeric(a != b)
+    } else {
+      g <- min(a, b):max(a, b)
+      delta[a, b] <- (sum(nc[g]) - (nc[min(a, b)] + nc[max(a, b)]) / 2)^2
+    }
+  }
+  d_e <- sum(outer(nc, nc) * delta) / (n - 1)
+  if (n <= 1 || d_e == 0) return(NA_real_)
+  1 - sum(o * delta) / d_e
+}
+
+# coders by their initials (the run's table has first names, the data
+# deposit initials)
+initials <- c(Tim = "TS", Stephanie = "SS", Ferdinand = "FA",
+              TS = "TS", SS = "SS", FA = "FA")
+agree <- d$agreement |>
+  mutate(coder_id = unname(initials[sub(" .*", "", coder_id)]))
+stopifnot(!anyNA(agree$coder_id))
+coders <- sort(unique(agree$coder_id))
+items <- sort(unique(agree$paper_id))
+
+# per rater and item: function attributed (yes/no), and scope and
+# vocabulary for the conclusions the rater scored
+codes <- function(df, who) {
+  ns <- df[[paste0("not_scorable_", who)]] %in% 1
+  tibble(paper_id = df$paper_id,
+         attributed = as.integer(!ns),
+         scope = ifelse(ns, NA,
+                        as.integer(as.character(df[[paste0("scope_", who)]]))),
+         vocabulary = ifelse(ns, NA,
+                             as.character(df[[paste0("vocabulary_", who)]])))
+}
+human <- lapply(coders, function(c) codes(filter(agree, coder_id == c),
+                                          "human"))
+names(human) <- coders
+model <- codes(distinct(agree, paper_id, .keep_all = TRUE), "model")
+
+# coders' consensus: the code given by at least two of the three
+# coders, none otherwise
+majority <- function(v) {
+  t <- sort(table(v[!is.na(v)]), decreasing = TRUE)
+  if (length(t) == 0 || t[1] < 2) NA_character_ else names(t)[1]
+}
+consensus <- tibble(paper_id = items) |>
+  mutate(
+    attributed = sapply(items, function(i)
+      as.integer(mean(sapply(human, function(h)
+        h$attributed[h$paper_id == i])) > 0.5)),
+    scope = as.integer(sapply(items, function(i)
+      majority(sapply(human, function(h) h$scope[h$paper_id == i])))),
+    vocabulary = sapply(items, function(i)
+      majority(sapply(human, function(h) h$vocabulary[h$paper_id == i]))))
+
+quantities <- list(
+  attributed = list(level = "nominal", values = 0:1),
+  scope = list(level = "ordinal", values = 0:3),
+  vocabulary = list(level = "nominal", values = c("A", "B", "C")))
+rater_matrix <- function(raters, q, keep)
+  do.call(rbind, lapply(raters, function(x) x[[q]][match(keep, x$paper_id)]))
+one_alpha <- function(pr, q, keep) kripp_alpha(rater_matrix(pr, q, keep),
+  quantities[[q]]$level, quantities[[q]]$values)
+one_pct <- function(pr, q, keep) {
+  x <- pr[[1]][[q]][match(keep, pr[[1]]$paper_id)]
+  y <- pr[[2]][[q]][match(keep, pr[[2]]$paper_id)]
+  ok <- !is.na(x) & !is.na(y)
+  c(agree = sum(x[ok] == y[ok]), n = sum(ok))
+}
+# one row: a single pair, or the mean over several pairs
+rel_row <- function(label, prs, q) {
+  est <- c(
+    mean(sapply(prs, one_alpha, q = q, keep = items), na.rm = TRUE),
+    mean(sapply(prs, function(pr) { r <- one_pct(pr, q, items); r[1] / r[2] }),
+         na.rm = TRUE))
+  counts <- rowSums(sapply(prs, one_pct, q = q, keep = items))
+  tibble(raters = label,
+         `Krippendorff's alpha` = sprintf("%.2f", est[1]),
+         `percent agreement` = sprintf("%.0f%%", 100 * est[2]),
+         `same code / compared` = if (length(prs) == 1)
+           sprintf("%d / %d", counts[["agree"]], counts[["n"]]) else "")
+}
+coder_pairs <- combn(coders, 2, simplify = FALSE)
+pair_table <- function(q) bind_rows(
+  lapply(coder_pairs, function(p) rel_row(paste(p, collapse = " with "),
+    list(list(human[[p[1]]], human[[p[2]]])), q)),
+  rel_row("mean of the three coder pairs",
+          lapply(coder_pairs, function(p) list(human[[p[1]]], human[[p[2]]])), q),
+  lapply(coders, function(c)
+    rel_row(paste("LLM with", c), list(list(human[[c]], model)), q)),
+  rel_row("mean of the three LLM-coder pairs",
+          lapply(coders, function(c) list(human[[c]], model)), q))
+# table: per measure, the coder pairs, the LLM with each
+# coder, and the LLM with the coders' consensus
+measure_names <- c(attributed = "function attributed", scope = "scope",
+                   vocabulary = "vocabulary")
+validation <- bind_rows(lapply(names(quantities), function(q) bind_rows(
+  pair_table(q),
+  rel_row("LLM with consensus", list(list(consensus, model)), q)) |>
+    mutate(measure = measure_names[[q]], .before = 1)))
+show_table(validation, "table_validation")
+```
+
+# Session
+
+```{r session}
+sessionInfo()
+```

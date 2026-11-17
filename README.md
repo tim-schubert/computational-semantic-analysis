@@ -17,7 +17,7 @@ Corpus sampling and the computational semantic analysis are a Python pipeline, p
 | Statistical analysis | 07 | `code/step07_join_and_checks.py` | joins the results into the tables the analysis reads |
 |  |  | `analysis/analysis.Rmd` | statistics, tables and figures |
 
-`code/prompts.py` holds all prompts, `code/config.py` all settings. `docs/data_dictionary.md` describes the columns of all tables, `docs/supplement_prompts.txt` reproduces all prompts verbatim.
+`code/prompts.py` holds all prompts, `code/config.py` all settings. Every prompt is reproduced verbatim in the paper's Supplementary Information. The tables are described in the data deposit's `data_dictionary.md`.
 
 ## Getting the code
 
@@ -32,7 +32,7 @@ All commands below are run from this directory, the repository root.
 
 ## Rerunning the pipeline (corpus sampling and computational semantic analysis)
 
-A rerun will not reproduce the paper's numbers exactly: the OpenAlex index changes over time, and the LLM's answers are not deterministic.
+A rerun will not reproduce the paper's numbers exactly: the OpenAlex index changes over time, and the LLM's answers are not deterministic. The study's run is preserved, though: its tables are in the data deposit, and the raw archive can be requested from the corresponding author.
 The following commands are for macOS or Linux (on Windows, use WSL).
 
 1.  **Python.** Install Python 3.10, then create an environment and install the packages:
@@ -50,7 +50,7 @@ The following commands are for macOS or Linux (on Windows, use WSL).
 
     For example (not real keys):
 
-    ```         
+    ```
     ANTHROPIC_API_KEY=sk-ant-api03-EXAMPLE0nly-n0tAr3alKey-XXXXXXXXXXXX
     OPENALEX_API_KEY=EXAMPLEn0tAr3alKeyXXXXXXXX
     ```
@@ -65,7 +65,7 @@ The following commands are for macOS or Linux (on Windows, use WSL).
 
     This runs the pipeline's steps in order and asks before each one, so it can be stopped and resumed (skipping the steps done). Results go to `data/runs/main/`. The LLM steps (03-05) can take several hours each. Without human coding, the last step (07) writes all tables except the human validation.
 
-5.  **Analysis.** Knit the analysis as in [Reproducing the study's results](#reproducing-the-results-statistical-analysis), but with `data = "../data/runs/main"` (or the respective run folder, if a different name was used) instead of the deposit.
+5.  **Analysis.** Knit the analysis as in [Reproducing the paper's results](#reproducing-the-papers-results-statistical-analysis), but with `data = "../data/runs/main"` (or the respective run folder, if a different name was used) instead of the deposit.
 
 6.  **Human coding (optional).** Step 06 writes `data/runs/main/coding_tool.html`, a page each coder opens in a browser; at the end it saves the coder's codes as `human_coding_<coder>.csv`. Move the coders' files to `data/runs/main/human_coding/` and combine them into one file with the same columns and one header, by hand or by running the following from the repository root (with the environment from step 1 active, to activate: `source .venv/bin/activate`):
 
@@ -86,7 +86,6 @@ The following commands are for macOS or Linux (on Windows, use WSL).
     ``` bash
     python code/step07_join_and_checks.py --run main
     ```
-
 
 ## Reproducing the paper's results (statistical analysis)
 
@@ -110,4 +109,3 @@ This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
     ```
 
     The report is saved as `analysis/analysis.html`, its tables in `analysis/tables/` and figures in `analysis/figures/`.
-
