@@ -19,6 +19,9 @@ Corpus sampling and the computational semantic analysis are a Python pipeline, p
 
 `code/prompts.py` holds all prompts, `code/config.py` all settings. Every prompt is reproduced verbatim in the paper's Supplementary Information. The tables are described in the data deposit's `data_dictionary.md`.
 
+<img width="1019" height="206" alt="image" src="https://github.com/user-attachments/assets/b8c3053d-6b4a-4d0f-92a1-bb41dac9d862" />
+
+
 ## Getting the code
 
 Run from Terminal:
