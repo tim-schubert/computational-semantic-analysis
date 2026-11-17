@@ -11,8 +11,8 @@ Corpus sampling and the computational semantic analysis are a Python pipeline, p
 | Corpus sampling | 01 | `code/step01_fetch_corpus.py` | random sample per field from OpenAlex; journal criterion (SJR); target size |
 |  | 02 | `code/step02_prepare_abstracts.py` | rebuilds each abstract from OpenAlex's inverted index |
 | Computational semantic analysis: screening | 03 | `code/step03_screen.py` | screening (LLM) |
-| extraction and masking | 04 | `code/step04_locate.py` | extraction (LLM), masking and checks, function attribution check (LLM) |
-| blinded semantic scoring | 05 | `code/step05_blind_score.py` | scope and vocabulary (LLM), three repeats each |
+| Extraction and masking | 04 | `code/step04_locate.py` | extraction (LLM), masking and checks, function attribution check (LLM) |
+| Blinded semantic scoring | 05 | `code/step05_blind_score.py` | scope and vocabulary (LLM), three repeats each |
 | Human validation | 06 | `code/step06_export_for_coders.py` | exports a coding tool for the three human coders |
 | Statistical analysis | 07 | `code/step07_join_and_checks.py` | joins the results into the tables the analysis reads |
 |  |  | `analysis/analysis.Rmd` | statistics, tables and figures |
@@ -95,7 +95,7 @@ This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
 1.  Download the file `deposit.zip` from the data deposit (<https://doi.org/10.5281/zenodo.XXXXXXX>, see also the paper's Data availability statement) and save it in the repository root, the folder `computational-semantic-analysis` (see [Getting the code](#getting-the-code)). Then unpack it from Terminal:
 
     ``` bash
-    cd computational-semantic-analysis   # if not already there
+    cd computational-semantic-analysis
     mkdir -p data
     unzip deposit.zip -d data
     ```
