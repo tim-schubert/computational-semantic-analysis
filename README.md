@@ -92,7 +92,15 @@ The following commands are for macOS or Linux (on Windows, use WSL).
 
 This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
 
-1.  Download the data deposit (see the paper's Data availability statement) and unpack it into `data/deposit/`, so that `data/deposit/analysis/papers.csv` exists.
+1.  Download the file `deposit.zip` from the data deposit (<https://doi.org/10.5281/zenodo.XXXXXXX>, see also the paper's Data availability statement) and save it in the repository root, the folder `computational-semantic-analysis` (see [Getting the code](#getting-the-code)). Then unpack it from Terminal:
+
+    ``` bash
+    cd computational-semantic-analysis   # if not already there
+    mkdir -p data
+    unzip deposit.zip -d data
+    ```
+
+    This creates the folder `data/deposit/`, which the analysis reads. `deposit.zip` can then be deleted.
 
 2.  Open `analysis/analysis.Rproj` in RStudio. In the console, install the package versions used:
 
