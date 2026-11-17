@@ -32,7 +32,8 @@ All commands below are run from this directory, the repository root.
 
 ## Rerunning the pipeline (corpus sampling and computational semantic analysis)
 
-A rerun will not reproduce the paper's numbers exactly: the OpenAlex index changes over time, and the LLM's answers are not deterministic. The study's run is preserved, though: its tables are in the data deposit, and the raw archive can be requested from the corresponding author.
+A rerun will not reproduce the paper's numbers exactly: the OpenAlex index changes over time, and the LLM's answers are not deterministic. The study's run is preserved through the data deposit.
+
 The following commands are for macOS or Linux (on Windows, use WSL).
 
 1.  **Python.** Install Python 3.10, then create an environment and install the packages:
