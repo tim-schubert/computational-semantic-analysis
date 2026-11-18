@@ -153,7 +153,8 @@ BLIND_REPEATS = 3                     # for step 05: repeats per statement (mode
 MAX_CONCURRENCY = 8                   # parallel calls in live mode
 PROMPT_CACHE_TTL = "5m"               # prompt cache lifetime in live mode; batch mode uses "1h"
 BATCH_CHUNK = 10000                   # requests per batch (--batch)
-BATCH_RETRY_LIVE = 50                 # failed batch requests are retried live if there are this many or fewer
+# failed batch requests are retried live if there are this many or fewer
+BATCH_RETRY_LIVE = 50
 BATCH_POLL_SECONDS = 30
 
 # --- what is measured ---

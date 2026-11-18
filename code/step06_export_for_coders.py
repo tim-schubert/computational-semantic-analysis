@@ -38,6 +38,7 @@ def write_review(spans, path):
     for r in spans:
         by_paper.setdefault(r["paper_id"], {})[r["location"]] = r
     with open(path, "w", encoding="utf-8") as f:
+        # the finding check mentioned below is optional
         f.write("EXTRACTED CONCLUSIONS — read this before trusting any score.\n"
                 "A conclusion marked [EXCLUDED] failed a check (not verbatim, "
                 "too many sentences, the substance not named or not fully "
