@@ -17,7 +17,7 @@ Corpus sampling and the computational semantic analysis are a Python pipeline, p
 | Statistical analysis | 07 | `code/step07_join_and_checks.py` | joins the results into the tables the analysis reads |
 |  |  | `analysis/analysis.Rmd` | statistics, tables and figures |
 
-`code/prompts.py` holds all prompts, `code/config.py` all settings. Every prompt is reproduced verbatim in the paper's Supplementary Information. The tables are described in the data deposit's `data_dictionary.md`.
+`code/prompts.py` holds all prompts, `code/config.py` all settings. Every prompt is reproduced verbatim in the paper's Supplementary Information. The tables are described in the data deposit's README.
 
 <img width="1019" height="206" alt="image" src="https://github.com/user-attachments/assets/b8c3053d-6b4a-4d0f-92a1-bb41dac9d862" />
 
@@ -95,7 +95,7 @@ The following commands are for macOS or Linux (on Windows, use WSL).
 
 This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
 
-1.  Download the file `deposit.zip` from the data deposit (<https://doi.org/10.5281/zenodo.XXXXXXX>, see also the paper's Data availability statement) and save it in the repository root, the folder `computational-semantic-analysis` (see [Getting the code](#getting-the-code)). Then unpack it from Terminal:
+1.  Download the file `deposit.zip` from the data deposit (<https://doi.org/10.5281/zenodo.24322265>, see also the paper's Data availability statement) and save it in the repository root, the folder `computational-semantic-analysis` (see [Getting the code](#getting-the-code)). Then unpack it from Terminal:
 
     ``` bash
     cd computational-semantic-analysis
