@@ -45,7 +45,9 @@ def split_not_does(answers):
 
 
 def mode_rung(rungs):
-    """The modal code, and whether the repeats disagree."""
+    """The modal code, and whether the repeats disagree. A tie goes to the
+    answer that came first (the repeats' order is the seeded shuffle of
+    build_jobs, so in effect random)."""
     rungs = [r for r in rungs if r is not None]
     if not rungs:
         return None, True
