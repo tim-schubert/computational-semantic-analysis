@@ -47,12 +47,18 @@ The following commands are for macOS or Linux (on Windows, use WSL).
     pip install -r requirements.txt
     ```
 
-2.  **API keys.** Copy the template, `cp .env.example .env`, and fill in both keys in `.env`:
+2.  **API keys.** The pipeline reads two keys from a file named `.env` in the repository folder. Create `.env` from the template:
+
+    ```bash
+    cp .env.example .env
+    ```
+
+    Open `.env` in a text editor and replace the placeholders after `=` with your keys:
 
     -   `OPENALEX_API_KEY`: available from <https://openalex.org/settings/api>.
     -   `ANTHROPIC_API_KEY`: available from <https://console.anthropic.com>.
 
-    For example (not real keys):
+    The two key lines then look like this (not real keys):
 
     ```
     ANTHROPIC_API_KEY=sk-ant-api03-EXAMPLE0nly-n0tAr3alKey-XXXXXXXXXXXX
