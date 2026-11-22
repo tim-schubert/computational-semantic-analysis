@@ -101,9 +101,10 @@ The following commands are for macOS or Linux (on Windows, use WSL).
 
 This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
 
-1.  Download the file `deposit.zip` from the data deposit (<https://doi.org/10.5281/zenodo.24322265>, see also the paper's Data availability statement) and save it in the repository folder, `computational-semantic-analysis` (created in [Getting the code](#getting-the-code)). In Terminal, go to that folder (type `cd `, drag the folder from Finder into the window, press Return) and unpack the file:
+1.  Download and unpack the data deposit (<https://doi.org/10.5281/zenodo.24322265>, see also the paper's Data availability statement). In Terminal, in the repository folder `computational-semantic-analysis` (see [Getting the code](#getting-the-code)), run:
 
     ``` bash
+    curl -L -o deposit.zip "https://zenodo.org/records/24322266/files/deposit.zip?download=1"
     mkdir -p data
     unzip deposit.zip -d data
     ```
