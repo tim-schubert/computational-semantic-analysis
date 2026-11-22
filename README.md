@@ -115,10 +115,11 @@ This needs R (4.4.2 was used, <https://cran.r-project.org>) and RStudio.
 
     ``` r
     install.packages("renv")
-    renv::restore()
+    renv::activate()   # sets up the project library; R restarts
+    renv::restore()    # installs the package versions used
     ```
 
-    When asked how to proceed, choose "Activate the project and use the project library". This installs the packages into the project only, without changing potential other R installations.
+    This installs the packages into the project only, without changing your other R libraries.
 
 3.  In the console, knit the analysis with the deposit as its data:
 
